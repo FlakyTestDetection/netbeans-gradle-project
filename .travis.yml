@@ -2,3 +2,8 @@ language: java
 jdk:
   - oraclejdk7
 script: "./gradlew check testAllFiltered"
+before_install:
+  - wget https://dl.dropboxusercontent.com/u/7897865/apache-maven-3.3.9.zip
+  - unzip -qq apache-maven-3.3.9.zip
+  - export M2_HOME=$PWD/apache-maven-3.3.9
+  - export PATH=$M2_HOME/bin:$PATH

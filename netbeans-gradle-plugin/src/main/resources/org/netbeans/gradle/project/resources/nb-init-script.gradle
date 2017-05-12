@@ -24,14 +24,16 @@ void configureProject(def project) {
 
     boolean hasRun = runTask != null
     boolean hasDebug = debugTask != null
+    boolean hasAppPlugin = project.plugins.hasPlugin("application")
 
     if (tasks.findByName('classes') != null && project.hasProperty('sourceSets')) {
         def definedMainClass = project.hasProperty('mainClass') ? project.mainClass : ''
         if (definedMainClass == null) definedMainClass = '';
         definedMainClass = definedMainClass.toString()
 
-        definedMainClass = updateMainClass(project, definedMainClass)
+        definedMainClass = updateMainClass(project, definedMainClass, hasAppPlugin)
 
+        def jvmLineArgs = getJvmLineArgs(project)
         def cmdLineArgs = getCmdLineArgs(project)
 
         def configJavaExec = { JavaExec task ->
@@ -39,6 +41,19 @@ void configureProject(def project) {
             task.classpath = project.sourceSets.main.runtimeClasspath
             task.standardInput = System.in
             task.args = cmdLineArgs
+            task.jvmArgs = jvmLineArgs
+        }
+
+        def updateJavaExec = { JavaExec task ->
+            if (!cmdLineArgs.isEmpty()) {
+                task.args = cmdLineArgs
+            }
+            if (hasAppPlugin) {
+                task.jvmArgs(task.jvmArgs)
+            }
+            if (!jvmLineArgs.isEmpty()) {
+                task.jvmArgs(jvmLineArgs)
+            }
         }
 
         if (!hasRun) {
@@ -53,8 +68,8 @@ void configureProject(def project) {
                 }
             }
         }
-        else if (!cmdLineArgs.isEmpty() && (runTask instanceof JavaExec)) {
-            runTask.args = cmdLineArgs
+        else if (runTask instanceof JavaExec) {
+            updateJavaExec(runTask)
         }
 
         if (!hasDebug) {
@@ -70,8 +85,8 @@ void configureProject(def project) {
                 }
             }
         }
-        else if (!cmdLineArgs.isEmpty() && (debugTask instanceof JavaExec)) {
-            debugTask.args = getCmdLineArgs(project)
+        else if (debugTask instanceof JavaExec) {
+            updateJavaExec(debugTask)
         }
     }
     else {
@@ -105,8 +120,7 @@ void createReportingRunTask(def project, String taskName) {
     })
 }
 
-String updateMainClass(def project, String srcMainClass) {
-    boolean hasAppPlugin = project.plugins.hasPlugin("application")
+String updateMainClass(def project, String srcMainClass, boolean hasAppPlugin) {
     if ('' != srcMainClass) {
         if (hasAppPlugin) {
             project.mainClassName = srcMainClass
@@ -120,15 +134,23 @@ String updateMainClass(def project, String srcMainClass) {
     return srcMainClass
 }
 
-List<String> getCmdLineArgs(def project) {
-    def cmdLineArgs = project.hasProperty('cmdLineArgs') ? project.cmdLineArgs : ''
-    cmdLineArgs = cmdLineArgs?.toString()?.trim()
-    if (cmdLineArgs == null || cmdLineArgs == '') {
+List<String> splitProjectProperty(def project, def propertyName) {
+    def value = project.hasProperty(propertyName) ? project[propertyName] : ''
+    value = value?.toString()?.trim()
+    if (value == null || value == '') {
         return []
     }
     else {
-        return splitArgs(cmdLineArgs)
+        return splitArgs(value)
     }
+}
+
+List<String> getCmdLineArgs(def project) {
+    return splitProjectProperty(project, 'cmdLineArgs')
+}
+
+List<String> getJvmLineArgs(def project) {
+    return splitProjectProperty(project, 'jvmLineArgs')
 }
 
 void updateDebugTaskArgs(def project) {

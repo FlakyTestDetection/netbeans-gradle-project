@@ -7,6 +7,7 @@ import java.io.RandomAccessFile;
 import java.io.Reader;
 import java.io.Writer;
 import java.lang.reflect.InvocationTargetException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -58,19 +59,21 @@ import org.netbeans.gradle.project.api.task.TaskVariable;
 import org.netbeans.gradle.project.api.task.TaskVariableMap;
 import org.netbeans.gradle.project.model.DefaultGradleModelLoader;
 import org.netbeans.gradle.project.model.DefaultModelBuilderSetup;
+import org.netbeans.gradle.project.model.NbGradleProjectTree;
 import org.netbeans.gradle.project.output.BuildErrorConsumer;
 import org.netbeans.gradle.project.output.FileLineConsumer;
 import org.netbeans.gradle.project.output.IOTabRef;
 import org.netbeans.gradle.project.output.IOTabs;
 import org.netbeans.gradle.project.output.InputOutputWrapper;
 import org.netbeans.gradle.project.output.LineOutputWriter;
+import org.netbeans.gradle.project.output.OutputLinkFinder;
 import org.netbeans.gradle.project.output.OutputLinkPrinter;
 import org.netbeans.gradle.project.output.OutputUrlConsumer;
-import org.netbeans.gradle.project.output.ProjectFileConsumer;
 import org.netbeans.gradle.project.output.ReaderInputStream;
 import org.netbeans.gradle.project.output.ReplaceLineFeedReader;
 import org.netbeans.gradle.project.output.SmartOutputHandler;
 import org.netbeans.gradle.project.output.StackTraceConsumer;
+import org.netbeans.gradle.project.output.SubPathConsumer;
 import org.netbeans.gradle.project.output.TaskIOTab;
 import org.netbeans.gradle.project.output.WriterOutputStream;
 import org.netbeans.gradle.project.properties.global.CommonGlobalSettings;
@@ -264,6 +267,23 @@ public final class AsyncGradleTask implements Runnable {
         }
     }
 
+    private static OutputLinkFinder projectDirLinks(NbGradleProject project) {
+        List<Path> roots = new ArrayList<>();
+        roots.add(project.currentModel().getValue().getSettingsDir());
+
+        NbGradleProjectTree tree = project.currentModel().getValue().getProjectDef().getRootProject();
+        addAllProjectRoots(tree, roots);
+
+        return SubPathConsumer.pathLinks(roots);
+    }
+
+    private static void addAllProjectRoots(NbGradleProjectTree tree, List<Path> roots) {
+        roots.add(tree.getProjectDir().toPath());
+        for (NbGradleProjectTree child: tree.getChildren()) {
+            addAllProjectRoots(child, roots);
+        }
+    }
+
     private static OutputRef configureOutput(
             NbGradleProject project,
             GradleTaskDef taskDef,
@@ -274,14 +294,14 @@ public final class AsyncGradleTask implements Runnable {
         outputConsumers.add(new OutputLinkPrinter(
                 new StackTraceConsumer(project),
                 new OutputUrlConsumer(),
-                new ProjectFileConsumer(project)));
+                projectDirLinks(project)));
 
         List<SmartOutputHandler.Consumer> errorConsumers = new ArrayList<>();
         errorConsumers.add(new BuildErrorConsumer());
         errorConsumers.add(new OutputLinkPrinter(
                 new StackTraceConsumer(project),
                 new OutputUrlConsumer(),
-                new ProjectFileConsumer(project),
+                projectDirLinks(project),
                 new FileLineConsumer()));
 
         InputOutputWrapper io = tab.getIo();

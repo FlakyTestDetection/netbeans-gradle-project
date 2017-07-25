@@ -13,4 +13,4 @@ notifications:
     template:
     - Build <%{build_url}|#%{build_number}> (<%{compare_url}|%{commit}>) of %{repository}@%{branch} by %{author} %{result} in %{duration}
     - 'dashbot: %{repository_name} %{build_id}'
-script: ./gradlew check testAllFiltered
+script: "./gradlew check testAllFiltered"

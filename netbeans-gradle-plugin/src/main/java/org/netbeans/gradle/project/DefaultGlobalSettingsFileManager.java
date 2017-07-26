@@ -17,19 +17,26 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.jtrim.cancel.Cancellation;
+import org.jtrim.cancel.CancellationToken;
+import org.jtrim.cancel.OperationCanceledException;
+import org.jtrim.concurrent.CancelableTask;
 import org.jtrim.concurrent.GenericUpdateTaskExecutor;
 import org.jtrim.concurrent.TaskExecutor;
 import org.jtrim.concurrent.UpdateTaskExecutor;
+import org.jtrim.concurrent.WaitableSignal;
 import org.jtrim.utils.ExceptionHelper;
 import org.netbeans.gradle.project.model.NbGradleModel;
 import org.netbeans.gradle.project.model.NbGradleProjectTree;
 import org.netbeans.gradle.project.model.SettingsGradleDef;
 import org.netbeans.gradle.project.properties.global.GlobalSettingsUtils;
+import org.netbeans.gradle.project.util.LazyPaths;
 import org.netbeans.gradle.project.util.NbTaskExecutors;
 import org.netbeans.gradle.project.util.StringUtils;
 
@@ -40,6 +47,7 @@ public final class DefaultGlobalSettingsFileManager implements GlobalSettingsFil
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int STAMP_SIZE = 16 ; // bytes
 
+    private final LazyPaths cacheDir;
     private final RootProjectRegistry rootProjectRegistry;
     private final UpdateTaskExecutor settingsDefPersistor;
 
@@ -49,8 +57,12 @@ public final class DefaultGlobalSettingsFileManager implements GlobalSettingsFil
     private final Locker locker;
 
     public DefaultGlobalSettingsFileManager(RootProjectRegistry rootProjectRegistry) {
-        ExceptionHelper.checkNotNullArgument(rootProjectRegistry, "rootProjectRegistry");
-        this.rootProjectRegistry = rootProjectRegistry;
+        this(rootProjectRegistry, GlobalSettingsUtils.cacheRoot());
+    }
+
+    public DefaultGlobalSettingsFileManager(RootProjectRegistry rootProjectRegistry, LazyPaths cacheDir) {
+        this.rootProjectRegistry = Objects.requireNonNull(rootProjectRegistry, "rootProjectRegistry");
+        this.cacheDir = Objects.requireNonNull(cacheDir, "cacheDir");
         this.settingsDefPersistor = new GenericUpdateTaskExecutor(SETTINGS_FILE_UPDATER);
         this.outstandingDefsLock = new ReentrantLock();
         this.outstandingDefs = new HashMap<>();
@@ -123,6 +135,21 @@ public final class DefaultGlobalSettingsFileManager implements GlobalSettingsFil
                 persistSettingsDefsNow();
             }
         });
+    }
+
+    // For test only
+    void waitForOutstanding(long msToWait) {
+        final WaitableSignal signal = new WaitableSignal();
+        SETTINGS_FILE_UPDATER.execute(Cancellation.UNCANCELABLE_TOKEN, new CancelableTask() {
+            @Override
+            public void execute(CancellationToken cancelToken) throws Exception {
+                signal.signal();
+            }
+        }, null);
+
+        if (!signal.tryWaitSignal(Cancellation.UNCANCELABLE_TOKEN, msToWait, TimeUnit.MILLISECONDS)) {
+            throw new OperationCanceledException("timeout");
+        }
     }
 
     private void persistSettingsDefsNow() {
@@ -300,7 +327,7 @@ public final class DefaultGlobalSettingsFileManager implements GlobalSettingsFil
             subPaths.add(keyHash + ".properties");
         }
 
-        return GlobalSettingsUtils.tryGetGlobalCachePath(subPaths);
+        return cacheDir.tryGetSubPath(subPaths);
     }
 
     private Locker getLocker() {

@@ -368,6 +368,11 @@ public final class DefaultGradleModelLoader implements ModelLoader<NbGradleModel
         }
 
         Path rootProjectDir = projectLoadKey.getAppliedRootProjectDir();
+        if (Objects.equals(rootProjectDir, projectLoadKey.project.getProjectDirectoryAsPath())) {
+            LOGGER.log(Level.INFO, "Project is expected to be the root project, skipping project load key fix for {0}.", rootProjectDir);
+            return projectLoadKey;
+        }
+
         NbGradleProject rootProject = NbGradleProjectFactory.tryLoadSafeGradleProject(rootProjectDir);
         if (rootProject != null) {
             return fixProjectLoadKeyWithRootProject(cancelToken, projectLoadKey, rootProject, progress);
@@ -668,7 +673,7 @@ public final class DefaultGradleModelLoader implements ModelLoader<NbGradleModel
     public static NbGradleModel createEmptyModel(Path projectDir, ScriptFileProvider scriptProvider) {
         return new NbGradleModel(
                 NbGradleMultiProjectDef.createEmpty(projectDir, scriptProvider),
-                scriptProvider);
+                ModelLoadUtils.findSettingsGradle(projectDir, scriptProvider));
     }
 
     private static List<String> getModelEvaluateArguments(Project project, SettingsGradleDef settingsDef) {
@@ -814,7 +819,7 @@ public final class DefaultGradleModelLoader implements ModelLoader<NbGradleModel
                 return settingsFile;
             }
 
-            return NbGradleModel.findSettingsGradle(
+            return ModelLoadUtils.findSettingsGradle(
                     project.getProjectDirectoryAsPath(),
                     project.getScriptFileProvider());
         }
